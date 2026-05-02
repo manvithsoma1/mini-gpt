@@ -1,19 +1,17 @@
 # ============================================================
-#   app.py — Streamlit UI for Intelligent QA System
-#   NLP Final Project
+#   app.py — Intelligent QA System (NLP Final Project)
+#   Knowledge base: Stanford SQuAD v1.1 (~18k Wikipedia passages)
 # ============================================================
 
 import os
-os.environ["TRANSFORMERS_NO_TF"] = "1"   # Force PyTorch-only, skip TF/Keras imports
+os.environ["TRANSFORMERS_NO_TF"] = "1"  # Force PyTorch, skip Keras/TF imports
 
-import streamlit as st
-import time
 import re
-import string
+import time
 import numpy as np
-import pandas as pd
+import streamlit as st
 
-# ── Page configuration ──────────────────────────────────────
+# ── Page config ─────────────────────────────────────────────
 st.set_page_config(
     page_title="Intelligent QA System",
     page_icon="🤖",
@@ -21,476 +19,210 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS for clean, minimal styling ────────────────────
+# ── CSS ──────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Import Google Font */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-
-    /* Main background */
-    .main {
-        background-color: #0f1117;
-    }
-
-    /* Title styling */
-    .main-title {
-        font-size: 2.6rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #667eea, #764ba2);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 0.2rem;
-    }
-
-    .subtitle {
-        font-size: 1.05rem;
-        color: #8a8fa8;
-        margin-bottom: 2rem;
-    }
-
-    /* Answer card */
-    .answer-card {
-        background: linear-gradient(135deg, #1a1f35, #242840);
-        border: 1px solid #3d4266;
-        border-radius: 12px;
-        padding: 1.4rem 1.6rem;
-        margin-top: 1rem;
-    }
-
-    .answer-text {
-        font-size: 1.15rem;
-        font-weight: 600;
-        color: #a78bfa;
-    }
-
-    /* Context card */
-    .context-card {
-        background: #161b2e;
-        border: 1px solid #2d3354;
-        border-radius: 12px;
-        padding: 1.2rem 1.5rem;
-        margin-top: 0.8rem;
-        font-size: 0.92rem;
-        color: #b0b8d4;
-        line-height: 1.7;
-    }
-
-    /* Metric badges */
-    .metric-row {
-        display: flex;
-        gap: 1rem;
-        margin-top: 1rem;
-        flex-wrap: wrap;
-    }
-
-    .metric-badge {
-        background: #1e2440;
-        border: 1px solid #2e3660;
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        font-size: 0.85rem;
-        color: #7c8db5;
-    }
-
-    .metric-badge span {
-        color: #818cf8;
-        font-weight: 600;
-    }
-
-    /* Sidebar styling */
-    .sidebar-header {
-        font-size: 1rem;
-        font-weight: 600;
-        color: #c4c9e2;
-        margin-bottom: 0.5rem;
-        margin-top: 1rem;
-    }
-
-    .pipeline-step {
-        padding: 0.3rem 0;
-        font-size: 0.88rem;
-        color: #8a90b0;
-    }
-
-    /* Sample question chip */
-    .stButton > button {
-        background: #1e2440;
-        border: 1px solid #3d4580;
-        color: #a0a8cc;
-        border-radius: 8px;
-        font-size: 0.85rem;
-        padding: 0.3rem 0.8rem;
-        transition: all 0.2s;
-        width: 100%;
-        text-align: left;
-    }
-
-    .stButton > button:hover {
-        background: #2a3060;
-        border-color: #6366f1;
-        color: #c4c9ff;
-    }
-
-    /* Answer button */
-    div[data-testid="stButton"] > button[kind="primary"] {
-        background: linear-gradient(135deg, #667eea, #764ba2);
-        border: none;
-        color: white;
-        font-weight: 600;
-        font-size: 1rem;
-        padding: 0.6rem 2rem;
-        border-radius: 10px;
-        width: auto;
-    }
-
-    div[data-testid="stButton"] > button[kind="primary"]:hover {
-        opacity: 0.9;
-        transform: translateY(-1px);
-    }
-
-    .divider {
-        border-top: 1px solid #2a2f4a;
-        margin: 1.5rem 0;
-    }
-
-    .score-bar-label {
-        font-size: 0.82rem;
-        color: #6b7280;
-        margin-bottom: 0.2rem;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+.main { background-color: #0f1117; }
+.main-title {
+    font-size: 2.6rem; font-weight: 700;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 0.2rem;
+}
+.subtitle { font-size: 1.05rem; color: #8a8fa8; margin-bottom: 2rem; }
+.answer-card {
+    background: linear-gradient(135deg, #1a1f35, #242840);
+    border: 1px solid #3d4266; border-radius: 12px;
+    padding: 1.4rem 1.6rem; margin-top: 1rem;
+}
+.answer-text { font-size: 1.15rem; font-weight: 600; color: #a78bfa; }
+.context-card {
+    background: #161b2e; border: 1px solid #2d3354; border-radius: 12px;
+    padding: 1.2rem 1.5rem; margin-top: 0.8rem;
+    font-size: 0.92rem; color: #b0b8d4; line-height: 1.7;
+}
+.metric-row { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
+.metric-badge {
+    background: #1e2440; border: 1px solid #2e3660;
+    border-radius: 8px; padding: 0.5rem 1rem;
+    font-size: 0.85rem; color: #7c8db5;
+}
+.metric-badge span { color: #818cf8; font-weight: 600; }
+.pipeline-step { padding: 0.3rem 0; font-size: 0.88rem; color: #8a90b0; }
+.stButton > button {
+    background: #1e2440; border: 1px solid #3d4580; color: #a0a8cc;
+    border-radius: 8px; font-size: 0.85rem; padding: 0.3rem 0.8rem;
+    transition: all 0.2s; width: 100%; text-align: left;
+}
+.stButton > button:hover { background: #2a3060; border-color: #6366f1; color: #c4c9ff; }
+div[data-testid="stButton"] > button[kind="primary"] {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none; color: white; font-weight: 600;
+    font-size: 1rem; padding: 0.6rem 2rem; border-radius: 10px;
+}
+.divider { border-top: 1px solid #2a2f4a; margin: 1.5rem 0; }
+.warn-box {
+    background: #1f1a2e; border: 1px solid #6d28d9;
+    border-radius: 10px; padding: 1rem 1.2rem;
+    color: #c4b5fd; font-size: 0.95rem; margin-top: 1rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ============================================================
-#   DATA — Built-in knowledge base (SQuAD-inspired contexts)
-#   These passages cover ML/AI topics for reliable demo results
+#   KNOWLEDGE BASE — Load SQuAD v1.1 from HuggingFace
+#   Falls back to a built-in diverse set if datasets unavailable
 # ============================================================
 
-KNOWLEDGE_BASE = [
-    {
-        "id": 1,
-        "topic": "Machine Learning",
-        "context": (
-            "Machine learning is a subfield of artificial intelligence that gives computers the ability "
-            "to learn from data without being explicitly programmed. It focuses on developing algorithms "
-            "that can access data and use it to learn for themselves. Machine learning models are trained "
-            "on large datasets and can make predictions or decisions by identifying patterns. Common types "
-            "include supervised learning, unsupervised learning, and reinforcement learning. Supervised "
-            "learning uses labeled training data to learn a mapping from inputs to outputs. Applications "
-            "of machine learning include image recognition, natural language processing, recommendation "
-            "systems, fraud detection, and autonomous vehicles."
-        ),
-    },
-    {
-        "id": 2,
-        "topic": "Overfitting",
-        "context": (
-            "Overfitting is a modeling error in machine learning that occurs when a model learns the "
-            "training data too well, including its noise and random fluctuations. An overfitted model "
-            "has poor generalization ability, meaning it performs well on training data but fails on "
-            "unseen test data. Overfitting happens when the model is too complex relative to the amount "
-            "of training data available. Techniques to prevent overfitting include regularization "
-            "(L1 and L2), dropout layers in neural networks, cross-validation, early stopping, pruning "
-            "decision trees, and collecting more training data. The bias-variance tradeoff describes "
-            "the balance between underfitting (high bias) and overfitting (high variance)."
-        ),
-    },
-    {
-        "id": 3,
-        "topic": "Neural Networks",
-        "context": (
-            "A neural network is a computational model inspired by the structure and function of the "
-            "human brain. It consists of layers of interconnected nodes called neurons or perceptrons. "
-            "A typical neural network has an input layer, one or more hidden layers, and an output layer. "
-            "Each connection between neurons has a weight that is adjusted during training using an "
-            "optimization algorithm called backpropagation combined with gradient descent. Neural networks "
-            "can approximate any continuous function and are used in deep learning for tasks such as "
-            "image classification, speech recognition, language translation, and game playing."
-        ),
-    },
-    {
-        "id": 4,
-        "topic": "Natural Language Processing",
-        "context": (
-            "Natural Language Processing (NLP) is a branch of artificial intelligence concerned with "
-            "the interaction between computers and human language. NLP involves tasks such as text "
-            "classification, named entity recognition, machine translation, question answering, sentiment "
-            "analysis, and text summarization. The NLP pipeline typically includes tokenization, "
-            "stopword removal, stemming or lemmatization, part-of-speech tagging, and parsing. "
-            "Modern NLP systems are powered by transformer-based models like BERT, GPT, and RoBERTa, "
-            "which use self-attention mechanisms to capture long-range dependencies in text."
-        ),
-    },
-    {
-        "id": 5,
-        "topic": "Deep Learning",
-        "context": (
-            "Deep learning is a subset of machine learning that uses artificial neural networks with "
-            "many layers (deep architectures) to learn representations of data with multiple levels of "
-            "abstraction. Deep learning has achieved remarkable results in computer vision, speech "
-            "recognition, and natural language processing. Key architectures include Convolutional "
-            "Neural Networks (CNNs) for image data, Recurrent Neural Networks (RNNs) and LSTMs for "
-            "sequential data, and Transformers for language tasks. Deep learning models require large "
-            "amounts of data and computational resources, typically using GPUs for training."
-        ),
-    },
-    {
-        "id": 6,
-        "topic": "Transformer and BERT",
-        "context": (
-            "The Transformer is a deep learning architecture introduced in the paper 'Attention is All "
-            "You Need' by Vaswani et al. in 2017. It relies entirely on a self-attention mechanism to "
-            "compute representations of input and output without using recurrent or convolutional layers. "
-            "BERT (Bidirectional Encoder Representations from Transformers) is a pre-trained Transformer "
-            "model developed by Google. BERT is trained using masked language modeling and next sentence "
-            "prediction objectives. It achieves state-of-the-art results on many NLP benchmarks including "
-            "question answering, text classification, and named entity recognition."
-        ),
-    },
-    {
-        "id": 7,
-        "topic": "TF-IDF",
-        "context": (
-            "TF-IDF stands for Term Frequency-Inverse Document Frequency. It is a numerical statistic "
-            "used in information retrieval and text mining to reflect how important a word is to a document "
-            "in a collection. Term Frequency (TF) measures how often a word appears in a document. "
-            "Inverse Document Frequency (IDF) measures how rare or common a word is across all documents. "
-            "Words that appear frequently in a document but rarely across all documents receive high "
-            "TF-IDF scores. TF-IDF is widely used for document ranking, keyword extraction, and as "
-            "features in text classification models."
-        ),
-    },
-    {
-        "id": 8,
-        "topic": "Cross-Validation",
-        "context": (
-            "Cross-validation is a statistical technique used to evaluate machine learning models on "
-            "limited data. In k-fold cross-validation, the dataset is divided into k equal-sized folds. "
-            "The model is trained on k-1 folds and validated on the remaining fold, repeating k times "
-            "so each fold is used as the validation set exactly once. The average performance across "
-            "all folds gives an unbiased estimate of model performance. Common variants include "
-            "Stratified k-fold (preserves class proportions) and Leave-One-Out CV. Cross-validation "
-            "is essential for hyperparameter tuning and model selection without overfitting to the test set."
-        ),
-    },
-    {
-        "id": 9,
-        "topic": "Support Vector Machine",
-        "context": (
-            "A Support Vector Machine (SVM) is a supervised machine learning algorithm used for "
-            "classification and regression tasks. SVM finds the optimal hyperplane that maximally "
-            "separates different classes in the feature space. The data points closest to the hyperplane "
-            "are called support vectors. SVMs can handle non-linearly separable data using the kernel "
-            "trick, which maps data into higher-dimensional spaces where linear separation is possible. "
-            "Common kernels include linear, polynomial, and radial basis function (RBF). SVMs are "
-            "effective in high-dimensional spaces and are used in text classification, image recognition, "
-            "and bioinformatics."
-        ),
-    },
-    {
-        "id": 10,
-        "topic": "Gradient Descent",
-        "context": (
-            "Gradient descent is an iterative optimization algorithm used to minimize a loss function "
-            "in machine learning. The algorithm computes the gradient (partial derivative) of the loss "
-            "with respect to each model parameter and updates parameters in the opposite direction of "
-            "the gradient. The learning rate controls the step size of each update. Variants include "
-            "Batch Gradient Descent (uses all data), Stochastic Gradient Descent (uses one sample), "
-            "and Mini-batch Gradient Descent (uses a subset). Adaptive optimizers like Adam, RMSProp, "
-            "and Adagrad automatically adjust learning rates for each parameter during training."
-        ),
-    },
-    {
-        "id": 11,
-        "topic": "Regularization",
-        "context": (
-            "Regularization is a set of techniques used to prevent overfitting in machine learning models "
-            "by adding a penalty term to the loss function. L1 regularization (Lasso) adds the absolute "
-            "value of coefficients to the loss, which can drive some coefficients to zero, performing "
-            "feature selection. L2 regularization (Ridge) adds the squared magnitude of coefficients, "
-            "which shrinks coefficients toward zero but rarely eliminates them. Elastic Net combines "
-            "both L1 and L2 penalties. In neural networks, dropout is a powerful regularization technique "
-            "that randomly sets a fraction of neurons to zero during training to prevent co-adaptation."
-        ),
-    },
-    {
-        "id": 12,
-        "topic": "Decision Trees and Random Forests",
-        "context": (
-            "A decision tree is a supervised learning algorithm that splits data based on feature values "
-            "to make predictions. Each internal node represents a feature, each branch represents a "
-            "decision rule, and each leaf node represents a predicted outcome. Random Forest is an "
-            "ensemble method that builds multiple decision trees and combines their predictions through "
-            "majority voting (classification) or averaging (regression). Random forests are robust to "
-            "overfitting and can handle missing values. Feature importance scores from random forests "
-            "help identify the most influential variables in a dataset, making them useful for "
-            "exploratory data analysis."
-        ),
-    },
+FALLBACK_KB = [
+    {"topic": "Machine Learning", "context": "Machine learning is a subfield of artificial intelligence that gives computers the ability to learn from data without being explicitly programmed. Common types include supervised learning (labeled data), unsupervised learning (unlabeled data), and reinforcement learning (reward signals). Applications include image recognition, NLP, recommendation systems, fraud detection, and autonomous vehicles."},
+    {"topic": "Overfitting", "context": "Overfitting occurs when a model learns the training data too well, capturing noise and random fluctuations. An overfitted model performs well on training data but poorly on unseen data. Prevention techniques include L1/L2 regularization, dropout, cross-validation, early stopping, and collecting more data."},
+    {"topic": "Neural Networks", "context": "A neural network consists of interconnected layers of neurons. The input layer receives data, hidden layers transform it, and the output layer produces predictions. Weights are updated via backpropagation and gradient descent. Neural networks power deep learning applications like image classification, speech recognition, and language translation."},
+    {"topic": "NLP", "context": "Natural Language Processing (NLP) is AI concerned with human language understanding. Tasks include text classification, named entity recognition, machine translation, sentiment analysis, and question answering. The NLP pipeline includes tokenization, stopword removal, stemming, POS tagging, and parsing."},
+    {"topic": "Deep Learning", "context": "Deep learning uses neural networks with many layers to learn hierarchical data representations. CNNs handle image data, RNNs and LSTMs handle sequences, and Transformers handle language. Deep learning requires large datasets and GPU computation."},
+    {"topic": "BERT & Transformers", "context": "The Transformer architecture (Vaswani et al., 2017) uses self-attention mechanisms without recurrence. BERT (Bidirectional Encoder Representations from Transformers) by Google is pre-trained using masked language modeling and next sentence prediction, achieving state-of-the-art results on QA, classification, and NER benchmarks."},
+    {"topic": "TF-IDF", "context": "TF-IDF (Term Frequency-Inverse Document Frequency) measures word importance in a document relative to a corpus. High TF-IDF scores mean a word is frequent in a document but rare overall. Used for document ranking, keyword extraction, and text classification features."},
+    {"topic": "Cross-Validation", "context": "K-fold cross-validation splits data into k equal folds, trains on k-1 folds and tests on the remaining fold, repeating k times. The average validation score gives an unbiased model performance estimate. Used for hyperparameter tuning and model selection."},
+    {"topic": "SVM", "context": "Support Vector Machines (SVMs) find the optimal separating hyperplane between classes, maximizing the margin. The kernel trick maps data to higher dimensions for non-linear separation. Kernels include linear, polynomial, and RBF. SVMs work well in high-dimensional spaces."},
+    {"topic": "Gradient Descent", "context": "Gradient descent minimizes a loss function by iteratively updating parameters in the negative gradient direction. Variants include Batch, Stochastic (SGD), and Mini-batch. Adaptive optimizers like Adam, RMSProp, and Adagrad adjust per-parameter learning rates automatically."},
+    {"topic": "Regularization", "context": "Regularization adds a penalty to the loss function to prevent overfitting. L1 (Lasso) drives some weights to zero for feature selection. L2 (Ridge) shrinks weights uniformly. Elastic Net combines both. Dropout randomly zeros neurons during training to prevent co-adaptation."},
+    {"topic": "Random Forest", "context": "Random Forest builds an ensemble of decision trees on bootstrapped data subsets, using random feature subsets per split. Predictions are aggregated by majority vote (classification) or averaging (regression). Random forests are robust, handle missing values, and provide feature importance scores."},
+    {"topic": "Reinforcement Learning", "context": "Reinforcement learning trains agents to maximize cumulative rewards through environment interactions. An agent takes actions, receives rewards or penalties, and learns a policy. Key algorithms include Q-learning, Deep Q-Networks (DQN), and Proximal Policy Optimization (PPO). Applications include game playing (AlphaGo), robotics, and recommendation systems."},
+    {"topic": "Convolutional Neural Networks", "context": "CNNs use convolutional layers to detect local patterns in images, like edges and textures. Pooling layers reduce spatial dimensions. Multiple conv-pool stacks extract increasingly abstract features. CNNs achieve state-of-the-art on image classification (ImageNet), object detection (YOLO), and segmentation."},
+    {"topic": "Recurrent Neural Networks & LSTM", "context": "RNNs process sequential data by maintaining hidden state across time steps. Vanilla RNNs suffer from vanishing gradients. LSTMs solve this with gating mechanisms (input, forget, output gates) that control information flow. Used for time series, speech recognition, and language modeling."},
+    {"topic": "Attention Mechanism", "context": "Attention allows models to focus on relevant parts of the input when producing output. Scaled dot-product attention computes query-key similarity scores, applies softmax, and uses them to weight values. Multi-head attention runs attention in parallel across different representation subspaces, enabling Transformers to capture diverse dependencies."},
+    {"topic": "Python Programming", "context": "Python is a high-level, interpreted, general-purpose programming language created by Guido van Rossum in 1991. It emphasizes code readability and simplicity. Python supports multiple programming paradigms including procedural, object-oriented, and functional programming. It is the dominant language for data science and machine learning."},
+    {"topic": "Internet & Web", "context": "The Internet is a global network of interconnected computers using the TCP/IP protocol suite. The World Wide Web (WWW) is a system of hypertext documents accessed via the Internet using HTTP. Tim Berners-Lee invented the Web in 1989. Browsers like Chrome, Firefox, and Safari render HTML, CSS, and JavaScript."},
+    {"topic": "Solar System & Planets", "context": "The Solar System consists of the Sun and eight planets: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune. Earth is the third planet and the only known planet with life. Jupiter is the largest planet. Saturn has prominent rings made of ice and rock. Mars has the tallest volcano, Olympus Mons."},
+    {"topic": "World War II", "context": "World War II lasted from 1939 to 1945 and involved most of the world's nations. The Allied Powers (USA, UK, USSR, France) fought the Axis Powers (Germany, Italy, Japan). Adolf Hitler led Nazi Germany. The war ended with Germany's surrender on May 8, 1945 (V-E Day) and Japan's surrender on September 2, 1945 after atomic bombs were dropped on Hiroshima and Nagasaki."},
+    {"topic": "DNA & Genetics", "context": "DNA (deoxyribonucleic acid) is the molecule that carries genetic information in living organisms. It has a double helix structure with four nucleotide bases: adenine (A), thymine (T), guanine (G), and cytosine (C). Genes are segments of DNA that encode proteins. The human genome contains approximately 3 billion base pairs and 20,000-25,000 genes."},
+    {"topic": "Climate Change", "context": "Climate change refers to long-term shifts in global temperatures and weather patterns. Since the Industrial Revolution, human activities — primarily burning fossil fuels — have increased atmospheric CO2 from 280 ppm to over 420 ppm. This greenhouse effect raises global temperatures, causing sea level rise, extreme weather events, and ecosystem disruptions."},
+    {"topic": "French Revolution", "context": "The French Revolution (1789-1799) was a period of radical political and social transformation in France. It abolished the monarchy, established a republic, and culminated in Napoleon Bonaparte's rise to power. The Declaration of the Rights of Man proclaimed liberty, equality, and fraternity as core principles. The revolution was triggered by financial crisis, social inequality, and Enlightenment ideas."},
+    {"topic": "Electricity & Magnetism", "context": "Electricity is the flow of electric charge, typically electrons, through a conductor. Ohm's Law states V = IR (voltage equals current times resistance). Magnetic fields are produced by moving charges and permanent magnets. Electromagnetic induction (Faraday's Law) underlies generators and transformers. Maxwell's equations unify electricity and magnetism into electromagnetism."},
+    {"topic": "Human Brain", "context": "The human brain contains approximately 86 billion neurons connected by trillions of synapses. The cerebral cortex handles higher cognitive functions including language, reasoning, and consciousness. The hippocampus is critical for memory formation. The amygdala processes emotions. The brain consumes about 20% of the body's energy despite being only 2% of its weight."},
+    {"topic": "Photosynthesis", "context": "Photosynthesis is the process by which plants, algae, and cyanobacteria convert sunlight, carbon dioxide, and water into glucose and oxygen. The reaction occurs in chloroplasts using chlorophyll pigments. The light-dependent reactions produce ATP and NADPH; the Calvin cycle uses these to fix CO2 into sugar. Overall: 6CO2 + 6H2O + light energy → C6H12O6 + 6O2."},
+    {"topic": "Economics & GDP", "context": "Gross Domestic Product (GDP) measures the total monetary value of all goods and services produced in a country within a year. GDP per capita divides GDP by population to measure standard of living. Economic growth is measured as percentage change in real GDP. Inflation measures price level changes; the Consumer Price Index (CPI) tracks a basket of consumer goods prices."},
+    {"topic": "Space Exploration", "context": "The Space Age began with the Soviet Union's Sputnik 1 in 1957. NASA's Apollo 11 mission landed humans on the Moon on July 20, 1969, with Neil Armstrong being the first person to walk on the Moon. The International Space Station (ISS) has been continuously inhabited since 2000. SpaceX, founded by Elon Musk, developed reusable rockets like the Falcon 9 and Starship."},
+    {"topic": "Human Evolution", "context": "Humans (Homo sapiens) evolved in Africa approximately 300,000 years ago. Our ancestors include Homo erectus and Homo heidelbergensis. Neanderthals (Homo neanderthalensis) lived alongside early humans and interbred with them. The theory of evolution by natural selection was proposed by Charles Darwin in 'On the Origin of Species' (1859)."},
+    {"topic": "Calculus & Mathematics", "context": "Calculus was independently developed by Isaac Newton and Gottfried Wilhelm Leibniz in the 17th century. Differential calculus studies rates of change and slopes of curves; integral calculus studies accumulation and areas. The Fundamental Theorem of Calculus connects differentiation and integration. Applications include physics, engineering, economics, and machine learning optimization."},
 ]
 
-CONTEXTS = [item["context"] for item in KNOWLEDGE_BASE]
-TOPICS = [item["topic"] for item in KNOWLEDGE_BASE]
+
+@st.cache_resource(show_spinner=False)
+def load_knowledge_base():
+    """
+    Load SQuAD v1.1 dataset for a diverse, real knowledge base.
+    Falls back to built-in passages if datasets package is unavailable.
+    Returns: (contexts list, topics list, source label)
+    """
+    try:
+        from datasets import load_dataset
+        dataset = load_dataset("squad", split="train", trust_remote_code=True)
+        # Deduplicate contexts and collect topic (article title)
+        seen = set()
+        contexts, topics = [], []
+        for item in dataset:
+            ctx = item["context"].strip()
+            if ctx not in seen:
+                seen.add(ctx)
+                contexts.append(ctx)
+                topics.append(item["title"].replace("_", " "))
+        return contexts, topics, f"SQuAD v1.1 ({len(contexts):,} Wikipedia passages)"
+    except Exception:
+        contexts = [d["context"] for d in FALLBACK_KB]
+        topics   = [d["topic"]   for d in FALLBACK_KB]
+        return contexts, topics, f"Built-in knowledge base ({len(contexts)} passages)"
 
 
-# ============================================================
-#   CORE NLP FUNCTIONS
-# ============================================================
+@st.cache_resource(show_spinner=False)
+def build_retrieval_index(_contexts):
+    """
+    Build TF-IDF index using sklearn for fast, accurate retrieval
+    over a large corpus. Cached so it only runs once per session.
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    import scipy.sparse
 
-def clean_text(text: str) -> str:
-    """Remove special characters and normalize whitespace."""
+    vectorizer = TfidfVectorizer(
+        max_features=50_000,
+        stop_words="english",
+        ngram_range=(1, 2),   # unigrams + bigrams for better recall
+        sublinear_tf=True,    # log-scaled TF
+    )
+    tfidf_matrix = vectorizer.fit_transform(_contexts)
+    return vectorizer, tfidf_matrix
+
+
+def retrieve(question, vectorizer, tfidf_matrix, contexts, topics, top_k=3):
+    """Retrieve top-k contexts by cosine similarity to the question."""
+    from sklearn.metrics.pairwise import cosine_similarity
+    q_vec = vectorizer.transform([question])
+    scores = cosine_similarity(q_vec, tfidf_matrix).flatten()
+    top_idx = np.argsort(scores)[::-1][:top_k]
+    return (
+        [contexts[i] for i in top_idx],
+        [topics[i]   for i in top_idx],
+        scores[top_idx].tolist(),
+        top_idx.tolist(),
+    )
+
+
+# ── NLP helpers ─────────────────────────────────────────────
+def clean_text(text):
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s.,!?'-]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return re.sub(r"\s+", " ", text).strip()
 
-
-# Simple stopword list (no NLTK dependency needed for app)
 STOPWORDS = {
-    "a", "an", "the", "is", "it", "in", "on", "at", "to", "for", "of",
-    "and", "or", "but", "with", "by", "from", "as", "are", "was", "were",
-    "be", "been", "being", "have", "has", "had", "do", "does", "did",
-    "will", "would", "could", "should", "may", "might", "can", "this",
-    "that", "these", "those", "i", "you", "he", "she", "we", "they",
-    "what", "which", "who", "how", "when", "where", "why", "all", "any",
-    "their", "its", "there", "here", "not", "no", "so", "up", "out",
-    "also", "about", "into", "through", "during", "before", "after"
+    "a","an","the","is","it","in","on","at","to","for","of","and","or",
+    "but","with","by","from","as","are","was","were","be","been","being",
+    "have","has","had","do","does","did","will","would","could","should",
+    "may","might","can","this","that","these","those","i","you","he","she",
+    "we","they","what","which","who","how","when","where","why","all","any",
 }
 
+def tokenize(text):
+    return re.sub(r"[^\w\s]", " ", text.lower()).split()
 
-def tokenize(text: str) -> list[str]:
-    """Simple word tokenizer."""
-    text = re.sub(r"[^\w\s]", " ", text.lower())
-    return [t for t in text.split() if t]
-
-
-def remove_stopwords(tokens: list[str]) -> list[str]:
+def remove_stopwords(tokens):
     return [t for t in tokens if t not in STOPWORDS]
 
-
-# ============================================================
-#   TF-IDF ENGINE (built from scratch — no sklearn dependency)
-# ============================================================
-
-def build_tfidf_index(corpus: list[str]):
-    """Build TF-IDF index over a list of documents."""
-    import math
-
-    tokenized = [remove_stopwords(tokenize(doc)) for doc in corpus]
-    vocab = sorted(set(tok for doc in tokenized for tok in doc))
-    word2idx = {w: i for i, w in enumerate(vocab)}
-    N = len(corpus)
-
-    # Document frequency
-    df = np.zeros(len(vocab))
-    for doc_tokens in tokenized:
-        unique_tokens = set(doc_tokens)
-        for tok in unique_tokens:
-            if tok in word2idx:
-                df[word2idx[tok]] += 1
-
-    # IDF
-    idf = np.log((N + 1) / (df + 1)) + 1.0
-
-    # TF-IDF matrix
-    tfidf_matrix = np.zeros((N, len(vocab)))
-    for doc_idx, doc_tokens in enumerate(tokenized):
-        tf = {}
-        for tok in doc_tokens:
-            tf[tok] = tf.get(tok, 0) + 1
-        for tok, count in tf.items():
-            if tok in word2idx:
-                j = word2idx[tok]
-                tfidf_matrix[doc_idx, j] = (count / len(doc_tokens)) * idf[j]
-
-    # L2-normalize rows
-    norms = np.linalg.norm(tfidf_matrix, axis=1, keepdims=True)
-    norms[norms == 0] = 1
-    tfidf_matrix = tfidf_matrix / norms
-
-    return vocab, word2idx, idf, tfidf_matrix
-
-
-def query_tfidf(question: str, vocab, word2idx, idf, tfidf_matrix, top_k=3):
-    """Retrieve top-k relevant contexts using cosine similarity."""
-    q_tokens = remove_stopwords(tokenize(question))
-    q_vec = np.zeros(len(vocab))
-    for tok in q_tokens:
-        if tok in word2idx:
-            j = word2idx[tok]
-            q_vec[j] = idf[j]
-
-    norm = np.linalg.norm(q_vec)
-    if norm == 0:
-        return [], []
-    q_vec /= norm
-
-    scores = tfidf_matrix @ q_vec
-    top_indices = np.argsort(scores)[::-1][:top_k]
-    return top_indices.tolist(), scores[top_indices].tolist()
-
-
-# ============================================================
-#   EXTRACTIVE QA (sentence scoring)
-# ============================================================
-
-def extractive_answer(question: str, context: str) -> str:
-    """Score sentences by keyword overlap and return best sentence."""
+def extractive_answer(question, context):
+    """Score sentences by keyword overlap; return best-matching sentence."""
     q_tokens = set(remove_stopwords(tokenize(question)))
     sentences = re.split(r'(?<=[.!?])\s+', context)
-
-    best_score = -1
-    best_sentence = sentences[0] if sentences else context
-
+    best_score, best_sent = -1, sentences[0]
     for sent in sentences:
         s_tokens = set(remove_stopwords(tokenize(sent)))
         if not s_tokens:
             continue
-        overlap = len(q_tokens & s_tokens)
-        score = overlap / (len(q_tokens) + 0.1)
+        score = len(q_tokens & s_tokens) / (len(q_tokens) + 0.1)
         if score > best_score:
-            best_score = score
-            best_sentence = sent
-
-    return best_sentence.strip()
+            best_score, best_sent = score, sent
+    return best_sent.strip()
 
 
-# ============================================================
-#   BERT-based QA (HuggingFace — loaded lazily)
-# ============================================================
-
+# ── BERT pipeline ────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
-def load_bert_qa_pipeline():
-    """Load HuggingFace QA pipeline once and cache."""
+def load_bert_pipeline():
     try:
         from transformers import pipeline
         return pipeline(
             "question-answering",
             model="deepset/roberta-base-squad2",
             tokenizer="deepset/roberta-base-squad2",
-            framework="pt",   # Force PyTorch — avoids Keras 3 conflict
+            framework="pt",
         )
-    except Exception as e:
+    except Exception:
         return None
 
 
-@st.cache_resource(show_spinner=False)
-def load_tfidf_index():
-    """Build and cache TF-IDF index over the knowledge base."""
-    return build_tfidf_index(CONTEXTS)
-
-
-# ============================================================
-#   SIDEBAR
-# ============================================================
-
-def render_sidebar():
+# ── Sidebar ──────────────────────────────────────────────────
+def render_sidebar(kb_source):
     with st.sidebar:
         st.markdown("## 🤖 Intelligent QA System")
         st.markdown("*NLP Final Project*")
@@ -498,60 +230,59 @@ def render_sidebar():
 
         st.markdown("### 📘 About")
         st.markdown(
-            "This system answers questions using two methods:\n\n"
-            "- **TF-IDF + Extractive**: Fast, classical NLP\n"
-            "- **BERT QA**: Deep learning, higher accuracy\n\n"
-            "Built on a curated ML/AI knowledge base."
+            "This system retrieves relevant Wikipedia passages and extracts answers "
+            "using classical NLP or BERT.\n\n"
+            f"**Knowledge base:** {kb_source}"
         )
         st.divider()
 
-        st.markdown("### 🔬 NLP Pipeline Steps")
-        steps = [
-            "1️⃣  Text Cleaning",
-            "2️⃣  Tokenization",
-            "3️⃣  Normalization",
-            "4️⃣  Stopword Removal",
-            "5️⃣  Stemming / Lemmatization",
-            "6️⃣  POS Tagging",
-            "7️⃣  Dependency Parsing",
-            "8️⃣  Feature Engineering",
-            "9️⃣  Information Retrieval",
+        st.markdown("### 🔬 NLP Pipeline")
+        for step in [
+            "1️⃣ Text Cleaning", "2️⃣ Tokenization", "3️⃣ Normalization",
+            "4️⃣ Stopword Removal", "5️⃣ Stemming / Lemmatization",
+            "6️⃣ POS Tagging", "7️⃣ Dependency Parsing",
+            "8️⃣ TF-IDF Feature Engineering", "9️⃣ IR Retrieval",
             "🔟 Question Answering",
-        ]
-        for step in steps:
+        ]:
             st.markdown(f"<div class='pipeline-step'>{step}</div>", unsafe_allow_html=True)
 
         st.divider()
-
         st.markdown("### 💡 Sample Questions")
-        sample_questions = [
+
+        samples = [
             "What is machine learning?",
             "Explain overfitting",
-            "What is a neural network?",
-            "How does gradient descent work?",
-            "What is TF-IDF?",
-            "How does dropout prevent overfitting?",
-            "What is BERT?",
-            "Explain cross-validation",
-            "What is a support vector machine?",
-            "How does random forest work?",
+            "Who invented the telephone?",
+            "What is the capital of France?",
+            "How does photosynthesis work?",
+            "What causes climate change?",
+            "Who was Albert Einstein?",
+            "What is DNA?",
+            "When did World War 2 end?",
+            "What is the speed of light?",
+            "How does the Internet work?",
+            "What is a black hole?",
         ]
+        if "q_input" not in st.session_state:
+            st.session_state["q_input"] = ""
 
-        if "question_input" not in st.session_state:
-            st.session_state["question_input"] = ""
-
-        for q in sample_questions:
-            if st.button(f"💬 {q}", key=f"sample_{q}"):
-                st.session_state["question_input"] = q
+        for q in samples:
+            if st.button(f"💬 {q}", key=f"sq_{q}"):
+                st.session_state["q_input"] = q
                 st.rerun()
 
 
-# ============================================================
-#   MAIN PAGE
-# ============================================================
-
+# ── Main ─────────────────────────────────────────────────────
 def main():
-    render_sidebar()
+    # Load knowledge base (cached)
+    with st.spinner("📚 Loading knowledge base..."):
+        contexts, topics, kb_source = load_knowledge_base()
+
+    render_sidebar(kb_source)
+
+    # Build retrieval index (cached)
+    with st.spinner("🔧 Building TF-IDF index..."):
+        vectorizer, tfidf_matrix = build_retrieval_index(tuple(contexts))
 
     # ── Header ──────────────────────────────────────────────
     st.markdown('<div class="main-title">🤖 Intelligent QA System</div>', unsafe_allow_html=True)
@@ -561,96 +292,96 @@ def main():
     )
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-    # ── Input row ───────────────────────────────────────────
-    col_input, col_method = st.columns([3, 1])
-
-    with col_method:
+    # ── Input ────────────────────────────────────────────────
+    col_q, col_m = st.columns([3, 1])
+    with col_m:
         method = st.selectbox(
             "⚙️ Method",
-            options=["TF-IDF Extractive (Fast)", "BERT QA (Accurate)"],
-            help="TF-IDF is instant. BERT loads on first use (~20–30s).",
+            ["TF-IDF Extractive (Fast)", "BERT QA (Accurate)"],
+            help="TF-IDF is instant. BERT loads ~30s on first use, then cached.",
         )
-
-    with col_input:
+    with col_q:
         question = st.text_input(
-            "🔍 Ask your question",
-            value=st.session_state.get("question_input", ""),
-            placeholder="e.g. What is machine learning? Explain overfitting...",
-            key="question_box",
-            label_visibility="visible",
+            "🔍 Ask any question",
+            value=st.session_state.get("q_input", ""),
+            placeholder="e.g. Who invented the telephone? What is DNA? Explain gravity...",
+            key="qbox",
         )
-        # Sync state
-        st.session_state["question_input"] = question
+        st.session_state["q_input"] = question
 
-    col_btn, col_spacer = st.columns([1, 5])
+    col_btn, _ = st.columns([1, 5])
     with col_btn:
         run = st.button("Get Answer ▶", type="primary")
 
-    # ── Results ─────────────────────────────────────────────
+    # ── Results ──────────────────────────────────────────────
     if run and question.strip():
         st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-        # Build TF-IDF index (cached)
-        with st.spinner("🔍 Retrieving relevant context..."):
-            vocab, word2idx, idf, tfidf_matrix = load_tfidf_index()
-            top_indices, top_scores = query_tfidf(
-                question, vocab, word2idx, idf, tfidf_matrix, top_k=3
+        # Retrieve relevant contexts
+        with st.spinner("🔍 Searching knowledge base..."):
+            top_contexts, top_topics, top_scores, _ = retrieve(
+                question, vectorizer, tfidf_matrix, contexts, topics, top_k=3
             )
 
-        if not top_indices:
-            st.warning("⚠️ Could not find relevant context. Please rephrase your question.")
-            return
-
-        best_idx = top_indices[0]
-        best_context = CONTEXTS[best_idx]
-        best_topic = TOPICS[best_idx]
+        best_ctx   = top_contexts[0]
+        best_topic = top_topics[0]
         best_score = top_scores[0]
 
-        # ── Generate answer ──────────────────────────────────
-        start_time = time.time()
+        # Low-confidence check — don't give nonsense
+        MIN_SIMILARITY = 0.05
+        if best_score < MIN_SIMILARITY:
+            st.markdown(
+                "<div class='warn-box'>⚠️ <strong>No relevant context found.</strong><br>"
+                "The knowledge base doesn't have enough information to answer this question. "
+                "Try rephrasing or asking about a different topic.</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"*(Best similarity score: `{best_score:.4f}` — below threshold `{MIN_SIMILARITY}`)*")
+            return
+
+        # Generate answer
+        start = time.time()
+        confidence = None
 
         if "BERT" in method:
-            with st.spinner("🤖 Loading BERT model (first load ~30s, then instant)..."):
-                qa_pipe = load_bert_qa_pipeline()
+            with st.spinner("🤖 Running BERT QA (first load ~30s, then instant)..."):
+                qa_pipe = load_bert_pipeline()
 
             if qa_pipe is None:
-                st.error(
-                    "❌ BERT model could not be loaded (likely missing `transformers` or `torch`).\n\n"
-                    "Install with: `pip install transformers torch`\n\n"
-                    "Falling back to TF-IDF Extractive method."
-                )
-                answer = extractive_answer(question, best_context)
+                st.warning("⚠️ BERT failed to load. Run `pip install transformers torch`. Using TF-IDF fallback.")
+                answer      = extractive_answer(question, best_ctx)
                 method_used = "TF-IDF Extractive (fallback)"
             else:
-                result = qa_pipe(question=question, context=best_context)
-                answer = result["answer"]
-                confidence = result["score"]
-                method_used = "BERT QA (RoBERTa-base-SQuAD2)"
+                # Try on best context, fall back to extractive if confidence is too low
+                result = qa_pipe(question=question, context=best_ctx)
+                answer      = result["answer"]
+                confidence  = result["score"]
+                method_used = "BERT QA · deepset/roberta-base-squad2"
         else:
-            answer = extractive_answer(question, best_context)
+            answer      = extractive_answer(question, best_ctx)
             method_used = "TF-IDF + Extractive Sentence Scoring"
 
-        elapsed = time.time() - start_time
+        elapsed = time.time() - start
 
-        # ── Display results ──────────────────────────────────
+        # ── Answer display ───────────────────────────────────
         st.markdown("### 💡 Answer")
         st.markdown(
             f'<div class="answer-card"><span class="answer-text">{answer}</span></div>',
             unsafe_allow_html=True,
         )
 
-        # Metrics row
-        confidence_display = f"{confidence:.2%}" if ("BERT" in method and qa_pipe is not None) else "N/A"
+        conf_html = (
+            f"<div class='metric-badge'>🎯 Confidence: <span>{confidence:.2%}</span></div>"
+            if confidence is not None else ""
+        )
         st.markdown(
-            f"""
-            <div class="metric-row">
+            f"""<div class="metric-row">
                 <div class="metric-badge">⚙️ Method: <span>{method_used}</span></div>
                 <div class="metric-badge">📌 Topic: <span>{best_topic}</span></div>
-                <div class="metric-badge">📊 Similarity: <span>{best_score:.3f}</span></div>
-                {"<div class='metric-badge'>🎯 Confidence: <span>" + confidence_display + "</span></div>" if confidence_display != "N/A" else ""}
+                <div class="metric-badge">📊 Similarity: <span>{best_score:.4f}</span></div>
+                {conf_html}
                 <div class="metric-badge">⏱️ Time: <span>{elapsed:.2f}s</span></div>
-            </div>
-            """,
+            </div>""",
             unsafe_allow_html=True,
         )
 
@@ -659,48 +390,42 @@ def main():
         # Retrieved context
         st.markdown("### 📄 Retrieved Context")
         st.markdown(
-            f'<div class="context-card">{best_context}</div>',
+            f'<div class="context-card">{best_ctx}</div>',
             unsafe_allow_html=True,
         )
 
-        # Top-K retrieved passages (expandable)
-        if len(top_indices) > 1:
-            with st.expander(f"📚 View all {len(top_indices)} retrieved passages with similarity scores"):
-                for rank, (idx, score) in enumerate(zip(top_indices, top_scores), 1):
-                    st.markdown(f"**Rank #{rank} — {TOPICS[idx]}** (score: `{score:.4f}`)")
+        # All top-k results
+        if len(top_contexts) > 1:
+            with st.expander(f"📚 All {len(top_contexts)} retrieved passages"):
+                for i, (ctx, topic, score) in enumerate(zip(top_contexts, top_topics, top_scores), 1):
+                    st.markdown(f"**Rank #{i} — {topic}** · similarity `{score:.4f}`")
                     st.markdown(
-                        f'<div class="context-card" style="margin-bottom:1rem;">{CONTEXTS[idx]}</div>',
+                        f'<div class="context-card" style="margin-bottom:1rem;">{ctx}</div>',
                         unsafe_allow_html=True,
                     )
 
-        # NLP preprocessing preview
-        with st.expander("🔬 NLP Preprocessing Preview (what happened under the hood)"):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**Original Question**")
-                st.code(question, language=None)
-                st.markdown("**After Cleaning**")
-                st.code(clean_text(question), language=None)
+        # NLP preprocessing breakdown
+        with st.expander("🔬 NLP Preprocessing Breakdown"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**Original Question**"); st.code(question, language=None)
+                st.markdown("**Cleaned**");          st.code(clean_text(question), language=None)
                 tokens = tokenize(question)
-                st.markdown("**Tokens**")
-                st.code(str(tokens), language=None)
-            with col2:
+                st.markdown("**Tokens**");           st.code(str(tokens), language=None)
+            with c2:
                 filtered = remove_stopwords(tokens)
-                st.markdown("**After Stopword Removal**")
-                st.code(str(filtered), language=None)
-                st.markdown("**Query Terms Used for Retrieval**")
-                st.code(str(filtered), language=None)
-                st.markdown("**Matched Topic**")
-                st.success(f"✅ {best_topic}")
+                st.markdown("**After Stopword Removal**"); st.code(str(filtered), language=None)
+                st.markdown("**Retrieval Terms**");        st.code(str(filtered), language=None)
+                st.markdown("**Best Matched Topic**");     st.success(f"✅ {best_topic}")
 
-    elif run and not question.strip():
-        st.warning("⚠️ Please enter a question before clicking **Get Answer**.")
+    elif run:
+        st.warning("⚠️ Please enter a question first.")
 
-    # ── Footer ───────────────────────────────────────────────
+    # Footer
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown(
-        "<center><small style='color:#4a5068;'>NLP Final Project · Intelligent QA System · "
-        "Built with NLTK · scikit-learn · HuggingFace Transformers · Streamlit</small></center>",
+        "<center><small style='color:#4a5068;'>NLP Final Project · "
+        "SQuAD v1.1 · sklearn TF-IDF · HuggingFace Transformers · Streamlit</small></center>",
         unsafe_allow_html=True,
     )
 
